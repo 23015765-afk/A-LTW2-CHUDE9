@@ -54,30 +54,3 @@ Route::middleware('auth')->group(function () {
     Route::get('/ho-so', [ProfileController::class, 'show'])->name('profile.show');
     Route::put('/ho-so', [ProfileController::class, 'update'])->name('profile.update');
 });
-
-/*
-|--------------------------------------------------------------------------
-| Admin Routes
-|--------------------------------------------------------------------------
-*/
-
-Route::prefix('admin')->name('admin.')->middleware(['auth', 'admin'])->group(function () {
-    Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
-
-    // Posts Management
-    Route::resource('posts', AdminPostController::class)->except(['show']);
-
-    // Categories Management
-    Route::resource('categories', CategoryController::class)->except(['show']);
-
-    // Users Management
-    Route::get('/users', [UserController::class, 'index'])->name('users.index');
-    Route::patch('/users/{user}/toggle-role', [UserController::class, 'toggleRole'])->name('users.toggleRole');
-    Route::delete('/users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
-
-    // Comments Management
-    Route::get('/comments', [CommentController::class, 'index'])->name('comments.index');
-    Route::patch('/comments/{comment}/approve', [CommentController::class, 'approve'])->name('comments.approve');
-    Route::patch('/comments/{comment}/reject', [CommentController::class, 'reject'])->name('comments.reject');
-    Route::delete('/comments/{comment}', [CommentController::class, 'destroy'])->name('comments.destroy');
-});
