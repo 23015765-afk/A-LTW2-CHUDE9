@@ -17,3 +17,4 @@ yarn-error.log
 /.idea
 /.vscode
 /.gemini
+# Giữ lại render.yaml, Procfile, deploy.sh cho deploy

@@ -81,10 +81,10 @@ class PostController extends Controller
         $post->comments()->create([
             'user_id' => auth()->id(),
             'content' => $request->content,
-            'is_approved' => true,
+            'is_approved' => false, // Chờ admin duyệt
         ]);
 
-        return back()->with('success', 'Bình luận của bạn đã được đăng!');
+        return back()->with('success', 'Bình luận của bạn đã được gửi và đang chờ duyệt!');
     }
 
     public function toggleFavorite(Post $post)

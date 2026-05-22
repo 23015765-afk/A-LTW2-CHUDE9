@@ -46,7 +46,23 @@ class PostController extends Controller
             $data['image'] = $request->file('image')->store('posts', 'public');
         }
 
-        Post::create($data);
+        // Tạo slug duy nhất, bypass mutator bằng cách dùng DB::insert hoặc setRawAttributes
+        $slug = \Illuminate\Support\Str::slug($data['title']) . '-' . \Illuminate\Support\Str::random(5);
+
+        $post = new Post();
+        $post->setRawAttributes([
+            'user_id'     => $data['user_id'],
+            'category_id' => $data['category_id'],
+            'title'       => $data['title'],
+            'slug'        => $slug,
+            'excerpt'     => $data['excerpt'] ?? null,
+            'content'     => $data['content'],
+            'image'       => $data['image'] ?? null,
+            'location'    => $data['location'] ?? null,
+            'status'      => $data['status'],
+            'views_count' => 0,
+        ]);
+        $post->save();
 
         return redirect()->route('admin.posts.index')->with('success', 'Tạo bài viết thành công!');
     }
@@ -62,14 +78,27 @@ class PostController extends Controller
         $data = $request->validated();
 
         if ($request->hasFile('image')) {
-            if ($post->image) {
+            if ($post->image && !\Illuminate\Support\Str::startsWith($post->image, ['http://', 'https://'])) {
                 Storage::disk('public')->delete($post->image);
             }
             $data['image'] = $request->file('image')->store('posts', 'public');
         }
 
-        // Manually set title and slug to avoid the mutator double-triggering
-        $post->fill($data);
+        // Giữ nguyên slug cũ, bypass mutator setTitleAttribute
+        $attributes = [
+            'category_id' => $data['category_id'],
+            'title'       => $data['title'],
+            'slug'        => $post->slug, // giữ nguyên slug
+            'excerpt'     => $data['excerpt'] ?? null,
+            'content'     => $data['content'],
+            'location'    => $data['location'] ?? null,
+            'status'      => $data['status'],
+        ];
+        if (isset($data['image'])) {
+            $attributes['image'] = $data['image'];
+        }
+
+        $post->setRawAttributes(array_merge($post->getAttributes(), $attributes));
         $post->save();
 
         return redirect()->route('admin.posts.index')->with('success', 'Cập nhật bài viết thành công!');
