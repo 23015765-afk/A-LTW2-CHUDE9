@@ -61,7 +61,7 @@ class ChatbotController extends Controller
         }
         // 3. Tạm biệt
         if ($this->contains($msg, ['tạm biệt', 'bye', 'goodbye', 'hẹn gặp lại'])) {
-            return ['text' => 'Tạm biệt! Chúc bạn có chuyến du lịch thật vui vẻy! ✈️🌏', 'posts' => []];
+            return ['text' => 'Tạm biệt! Chúc bạn có chuyến du lịch thật vui vẻ! ✈️🌏', 'posts' => []];
         }
         // 4. Địa điểm
         $loc = $this->searchByLocation($msg);
@@ -93,9 +93,10 @@ class ChatbotController extends Controller
         if ($this->contains($msg, ['website', 'trang web', 'travelguide', 'bài viết', 'danh mục', 'tìm kiếm'])) {
             return ['text' => $this->websiteInfo(), 'posts' => []];
         }
-        // 12. Tìm tự do
+        // 12. Tìm tự do (ĐÃ SỬA: Hàm searchPosts giờ trả về array đồng bộ)
         $search = $this->searchPosts($message);
         if ($search) return $search;
+
         // 13. Fallback
         return ['text' => $this->fallback($message), 'posts' => []];
     }
@@ -257,7 +258,7 @@ class ChatbotController extends Controller
             'hà nội'   => "Hà Nội đẹp nhất tháng 9-11 (mùa thu) và tháng 3-4 (mùa xuân).",
             'phú quốc' => "Phú Quốc đẹp nhất tháng 11-4 (mùa khô). Tránh tháng 6-9 (mưa nhiều).",
             'đà lạt'   => "Đà Lạt đẹp quanh năm. Tháng 11-12 có hoa dã quỳ vàng rực.",
-            'sapa'     => "Sapa đẹp nhất tháng 9-10 (lúa chín vàng) và tháng 3-4 (hoa đào).",
+            'sapa'     => "Sapa đẹp nhất tháng 9-10 (lúa chín vàng) and tháng 3-4 (hoa đào).",
             'hạ long'  => "Hạ Long đẹp nhất tháng 4-8. Tránh tháng 11-3 (sương mù, lạnh).",
         ];
 
@@ -366,7 +367,11 @@ class ChatbotController extends Controller
              . "Bạn muốn tìm gì? 😊";
     }
 
-    private function searchPosts(string $message): ?string
+    /**
+     * ĐÃ SỬA: Hàm này giờ trả về array đồng bộ có cấu trúc ['text' => ..., 'posts' => ...]
+     * thay vì trả về chuỗi đơn lẻ để tránh lỗi chặt chẽ của PHP 8.2 trên Render.
+     */
+    private function searchPosts(string $message): ?array
     {
         $keywords = preg_split('/\s+/', trim($message));
         $keywords = array_filter($keywords, function ($k) {
@@ -389,13 +394,27 @@ class ChatbotController extends Controller
         if ($posts->isEmpty()) return null;
 
         $reply = "🔍 Tôi tìm thấy **{$posts->count()} bài viết** liên quan:\n\n";
+        $postData = [];
+
         foreach ($posts as $i => $post) {
             $reply .= ($i + 1) . ". **{$post->title}**";
             if ($post->location) $reply .= " 📍 {$post->location}";
             $reply .= "\n   👁️ " . number_format($post->views_count) . " lượt xem\n\n";
+
+            $postData[] = [
+                'title'    => $post->title,
+                'slug'     => $post->slug,
+                'location' => $post->location,
+                'views'    => number_format($post->views_count),
+                'excerpt'  => '',
+            ];
         }
         $reply .= "👉 Xem thêm tại trang **Bài viết**!";
-        return $reply;
+
+        return [
+            'text'  => $reply,
+            'posts' => $postData
+        ];
     }
 
     private function fallback(string $message): string
