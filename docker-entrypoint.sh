@@ -19,7 +19,7 @@ php artisan view:cache
 
 # Chạy database migrations
 echo ">> Running database migrations..."
-php artisan migrate --force
+php artisan migrate --force && php artisan db:seed --force
 
 # Tạo storage symlink
 echo ">> Creating storage symlink..."
