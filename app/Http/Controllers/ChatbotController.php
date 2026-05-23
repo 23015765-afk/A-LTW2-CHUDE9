@@ -11,7 +11,7 @@ use App\Models\Category;
 class ChatbotController extends Controller
 {
     /**
-     * POST /chatbot — Xử lý tin nhắn, không cần API key
+     * POST /chatbot — Xử lý tin nhắn từ Client
      */
     public function chat(Request $request)
     {
@@ -21,31 +21,36 @@ class ChatbotController extends Controller
 
         $message = trim($request->input('message'));
 
-        // Rate limiting
+        // Cấu hình Rate Limiting an toàn trên môi trường Cloud
         $ip       = $request->ip();
         $cacheKey = 'chatbot_rate_' . md5($ip);
-        $count    = Cache::get($cacheKey, 0);
-        if ($count >= 30) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Bạn gửi quá nhiều tin nhắn. Vui lòng thử lại sau 1 phút! ⏳',
-                'posts'   => [],
-            ], 429);
-        }
-        Cache::put($cacheKey, $count + 1, 60);
 
-        // processMessage giờ trả về ['text' => ..., 'posts' => [...]]
+        try {
+            $count = Cache::get($cacheKey, 0);
+            if ($count >= 30) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Bạn gửi quá nhiều tin nhắn. Vui lòng thử lại sau 1 phút! ⏳',
+                    'posts'   => [],
+                ], 429);
+            }
+            Cache::put($cacheKey, $count + 1, 60);
+        } catch (\Exception $e) {
+            // Khi deploy gói Render Free hệ thống file lưu cache có thể bị reset, chatbot vẫn tiếp tục chạy
+            Log::warning('Chatbot Cache Driver Warning: ' . $e->getMessage());
+        }
+
         $result = $this->processMessage($message);
 
         return response()->json([
             'success' => true,
             'message' => $result['text'],
-            'posts'   => $result['posts'],  // mảng bài viết kèm slug để render link
+            'posts'   => $result['posts'],
         ]);
     }
 
     /**
-     * Xử lý tin nhắn — logic chatbot theo từ khóa
+     * Điều hướng xử lý tin nhắn theo từ khóa
      */
     private function processMessage(string $message): array
     {
@@ -61,7 +66,7 @@ class ChatbotController extends Controller
         }
         // 3. Tạm biệt
         if ($this->contains($msg, ['tạm biệt', 'bye', 'goodbye', 'hẹn gặp lại'])) {
-            return ['text' => 'Tạm biệt! Chúc bạn có chuyến du lịch thật vui vẻy! ✈️🌏', 'posts' => []];
+            return ['text' => 'Tạm biệt! Chúc bạn có chuyến du lịch thật vui vẻ! ✈️🌏', 'posts' => []];
         }
         // 4. Địa điểm
         $loc = $this->searchByLocation($msg);
@@ -93,16 +98,13 @@ class ChatbotController extends Controller
         if ($this->contains($msg, ['website', 'trang web', 'travelguide', 'bài viết', 'danh mục', 'tìm kiếm'])) {
             return ['text' => $this->websiteInfo(), 'posts' => []];
         }
-        // 12. Tìm tự do
+        // 12. Tìm tự do theo từ khóa
         $search = $this->searchPosts($message);
         if ($search) return $search;
-        // 13. Fallback
+
+        // 13. Hệ thống phản hồi mặc định
         return ['text' => $this->fallback($message), 'posts' => []];
     }
-
-    // =========================================================
-    // CÁC HÀM TRẢ LỜI THEO CHỦ ĐỀ
-    // =========================================================
 
     private function greet(): string
     {
@@ -165,11 +167,11 @@ class ChatbotController extends Controller
                 foreach ($posts as $post) {
                     $excerpt = $post->excerpt ? mb_substr(strip_tags($post->excerpt), 0, 70, 'UTF-8') . '...' : '';
                     $postData[] = [
-                        'title'      => $post->title,
-                        'slug'       => $post->slug,
-                        'location'   => $post->location,
-                        'views'      => number_format($post->views_count),
-                        'excerpt'    => $excerpt,
+                        'title'    => $post->title,
+                        'slug'     => $post->slug,
+                        'location' => $post->location,
+                        'views'    => number_format($post->views_count),
+                        'excerpt'  => $excerpt,
                     ];
                 }
                 return ['text' => $text, 'posts' => $postData];
@@ -366,7 +368,10 @@ class ChatbotController extends Controller
              . "Bạn muốn tìm gì? 😊";
     }
 
-    private function searchPosts(string $message): ?string
+    /**
+     * SỬA LỖI TẠI ĐÂY: Chuyển đổi kiểu dữ liệu trả về từ ?string sang ?array
+     */
+    private function searchPosts(string $message): ?array
     {
         $keywords = preg_split('/\s+/', trim($message));
         $keywords = array_filter($keywords, function ($k) {
@@ -389,29 +394,31 @@ class ChatbotController extends Controller
         if ($posts->isEmpty()) return null;
 
         $reply = "🔍 Tôi tìm thấy **{$posts->count()} bài viết** liên quan:\n\n";
+        $postData = [];
+
         foreach ($posts as $i => $post) {
             $reply .= ($i + 1) . ". **{$post->title}**";
             if ($post->location) $reply .= " 📍 {$post->location}";
             $reply .= "\n   👁️ " . number_format($post->views_count) . " lượt xem\n\n";
+
+            $postData[] = [
+                'title'    => $post->title,
+                'slug'     => $post->slug,
+                'location' => $post->location,
+                'views'    => number_format($post->views_count),
+                'excerpt'  => '',
+            ];
         }
         $reply .= "👉 Xem thêm tại trang **Bài viết**!";
-        return $reply;
+
+        return [
+            'text'  => $reply,
+            'posts' => $postData
+        ];
     }
 
     private function fallback(string $message): string
     {
-        $suggestions = [
-            '🏖️ Biển đẹp nhất Việt Nam',
-            '🍜 Ẩm thực Hà Nội',
-            '💰 Du lịch tiết kiệm',
-            '🏔️ Trekking Sapa',
-            '🏨 Khách sạn Đà Nẵng',
-            '📅 Thời điểm đi Phú Quốc',
-        ];
-
-        $randomSuggestions = array_slice($suggestions, 0, 3);
-        $suggestionText = implode(', ', $randomSuggestions);
-
         return "Xin lỗi, tôi chưa hiểu câu hỏi của bạn 😅\n\n"
              . "Bạn có thể hỏi tôi về:\n"
              . "• 🗺️ Địa điểm du lịch (Đà Nẵng, Hà Nội, Phú Quốc...)\n"
@@ -423,10 +430,6 @@ class ChatbotController extends Controller
              . "Ví dụ: *\"Du lịch Đà Nẵng cần bao nhiêu tiền?\"*";
     }
 
-    // =========================================================
-    // HELPER
-    // =========================================================
-
     private function contains(string $text, array $keywords): bool
     {
         foreach ($keywords as $kw) {
@@ -437,16 +440,13 @@ class ChatbotController extends Controller
         return false;
     }
 
-    /**
-     * GET /chatbot/test — kiểm tra chatbot (local only)
-     */
     public function test()
     {
         if (!app()->isLocal()) {
             return response()->json(['error' => 'Forbidden'], 403);
         }
         return response()->json([
-            'status'       => 'OK - Chatbot tu dong san sang (khong can API key)',
+            'status'       => 'OK - Chatbot tu dong san sang',
             'total_posts'  => Post::where('status', 'published')->count(),
             'total_cats'   => Category::count(),
             'mode'         => 'keyword-based (no AI API required)',
