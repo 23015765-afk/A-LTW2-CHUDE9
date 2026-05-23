@@ -11,7 +11,7 @@ use App\Models\Category;
 class ChatbotController extends Controller
 {
     /**
-     * POST /chatbot — Xu ly tin nhan, khong can API key
+     * POST /chatbot — Xử lý tin nhắn, không cần API key
      */
     public function chat(Request $request)
     {
@@ -21,19 +21,26 @@ class ChatbotController extends Controller
 
         $message = trim($request->input('message'));
 
-        // Rate limiting
+        // Rate limiting - Tối ưu hóa để chạy mượt mà trên môi trường Production (Render)
         $ip       = $request->ip();
         $cacheKey = 'chatbot_rate_' . md5($ip);
-        $count    = Cache::get($cacheKey, 0);
-        if ($count >= 30) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Bạn gửi quá nhiều tin nhắn. Vui lòng thử lại sau 1 phút! ⏳',
-                'posts'   => [],
-            ], 429);
-        }
-        Cache::put($cacheKey, $count + 1, 60);
 
+        try {
+            $count = Cache::get($cacheKey, 0);
+            if ($count >= 30) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Bạn gửi quá nhiều tin nhắn. Vui lòng thử lại sau 1 phút! ⏳',
+                    'posts'   => [],
+                ], 429);
+            }
+            Cache::put($cacheKey, $count + 1, 60);
+        } catch (\Exception $e) {
+            // Nếu cache trên Render (file/database) có sự cố, chatbot vẫn chạy tiếp thay vì sập lỗi 500
+            Log::warning('Chatbot Rate Limit Cache Error: ' . $e->getMessage());
+        }
+
+        // processMessage luôn trả về ['text' => ..., 'posts' => [...]]
         $result = $this->processMessage($message);
 
         return response()->json([
@@ -44,47 +51,47 @@ class ChatbotController extends Controller
     }
 
     /**
-     * Xu ly tin nhan — logic chatbot theo tu khoa
+     * Xử lý tin nhắn — logic chatbot theo từ khóa
      */
     private function processMessage(string $message): array
     {
         $msg = mb_strtolower($message, 'UTF-8');
 
-        // 1. Chao hoi
+        // 1. Chào hỏi
         if ($this->contains($msg, ['xin chào', 'chào', 'hello', 'hi', 'hey', 'alo'])) {
             return ['text' => $this->greet(), 'posts' => []];
         }
-        // 2. Cam on
+        // 2. Cảm ơn
         if ($this->contains($msg, ['cảm ơn', 'cám ơn', 'thanks', 'thank you', 'tks'])) {
             return ['text' => 'Không có gì! Tôi luôn sẵn sàng hỗ trợ bạn. Bạn cần tư vấn thêm gì không? 😊', 'posts' => []];
         }
-        // 3. Tam biet
+        // 3. Tạm biệt
         if ($this->contains($msg, ['tạm biệt', 'bye', 'goodbye', 'hẹn gặp lại'])) {
             return ['text' => 'Tạm biệt! Chúc bạn có chuyến du lịch thật vui vẻ! ✈️🌏', 'posts' => []];
         }
-        // 4. Dia diem
+        // 4. Địa điểm
         $loc = $this->searchByLocation($msg);
         if ($loc) return $loc;
-        // 5. Danh muc
+        // 5. Danh mục
         $cat = $this->searchByCategory($msg);
         if ($cat) return $cat;
-        // 6. Chi phi
+        // 6. Chi phí
         if ($this->contains($msg, ['chi phí', 'bao nhiêu tiền', 'giá', 'ngân sách', 'tiết kiệm', 'rẻ', 'budget'])) {
             return $this->budgetAdvice($msg);
         }
-        // 7. Thoi diem
+        // 7. Thời điểm
         if ($this->contains($msg, ['khi nào', 'tháng mấy', 'mùa nào', 'thời điểm', 'thời tiết', 'mùa'])) {
             return ['text' => $this->seasonAdvice($msg), 'posts' => []];
         }
-        // 8. Am thuc
+        // 8. Ẩm thực
         if ($this->contains($msg, ['ăn gì', 'món ăn', 'đặc sản', 'ẩm thực', 'quán ăn', 'nhà hàng', 'food'])) {
             return $this->foodAdvice($msg);
         }
-        // 9. Khach san
+        // 9. Khách sạn
         if ($this->contains($msg, ['khách sạn', 'homestay', 'resort', 'ở đâu', 'lưu trú', 'phòng', 'hotel'])) {
             return $this->hotelAdvice($msg);
         }
-        // 10. Di chuyen
+        // 10. Di chuyển
         if ($this->contains($msg, ['đi bằng gì', 'phương tiện', 'xe', 'máy bay', 'tàu', 'di chuyển', 'đường đi'])) {
             return ['text' => $this->transportAdvice($msg), 'posts' => []];
         }
@@ -92,7 +99,7 @@ class ChatbotController extends Controller
         if ($this->contains($msg, ['website', 'trang web', 'travelguide', 'bài viết', 'danh mục', 'tìm kiếm'])) {
             return ['text' => $this->websiteInfo(), 'posts' => []];
         }
-        // 12. Tim tu do
+        // 12. Tìm tự do
         $search = $this->searchPosts($message);
         if ($search) return $search;
 
@@ -101,7 +108,7 @@ class ChatbotController extends Controller
     }
 
     // =========================================================
-    // CAC HAM TRA LOI THEO CHU DE
+    // CÁC HÀM TRẢ LỜI THEO CHỦ ĐỀ
     // =========================================================
 
     private function greet(): string
@@ -165,11 +172,11 @@ class ChatbotController extends Controller
                 foreach ($posts as $post) {
                     $excerpt = $post->excerpt ? mb_substr(strip_tags($post->excerpt), 0, 70, 'UTF-8') . '...' : '';
                     $postData[] = [
-                        'title'      => $post->title,
-                        'slug'       => $post->slug,
-                        'location'   => $post->location,
-                        'views'      => number_format($post->views_count),
-                        'excerpt'    => $excerpt,
+                        'title'    => $post->title,
+                        'slug'     => $post->slug,
+                        'location' => $post->location,
+                        'views'    => number_format($post->views_count),
+                        'excerpt'  => $excerpt,
                     ];
                 }
                 return ['text' => $text, 'posts' => $postData];
@@ -254,10 +261,10 @@ class ChatbotController extends Controller
     {
         $seasons = [
             'đà nẵng'  => "Đà Nẵng đẹp nhất tháng 3-8 (mùa khô). Tránh tháng 9-11 (mưa bão).",
-            'hà nội'   => "Hà Nội đẹp nhất tháng 9-11 (mùa thu) and tháng 3-4 (mùa xuân).",
+            'hà nội'   => "Hà Nội đẹp nhất tháng 9-11 (mùa thu) và tháng 3-4 (mùa xuân).",
             'phú quốc' => "Phú Quốc đẹp nhất tháng 11-4 (mùa khô). Tránh tháng 6-9 (mưa nhiều).",
             'đà lạt'   => "Đà Lạt đẹp quanh năm. Tháng 11-12 có hoa dã quỳ vàng rực.",
-            'sapa'     => "Sapa đẹp nhất tháng 9-10 (lúa chín vàng) and tháng 3-4 (hoa đào).",
+            'sapa'     => "Sapa đẹp nhất tháng 9-10 (lúa chín vàng) và tháng 3-4 (hoa đào).",
             'hạ long'  => "Hạ Long đẹp nhất tháng 4-8. Tránh tháng 11-3 (sương mù, lạnh).",
         ];
 
@@ -338,7 +345,7 @@ class ChatbotController extends Controller
         return "🚗 **Phương tiện di chuyển phổ biến:**\n\n"
              . "✈️ **Máy bay**: Nhanh nhất, đặt sớm giá rẻ (Vietjet, Bamboo, Vietnam Airlines)\n"
              . "🚂 **Tàu hỏa**: Ngắm cảnh đẹp, phù hợp Hà Nội-Đà Nẵng-Sài Gòn\n"
-             . "🚌 **Xe khách**: Rẻ nhất, many tuyến, limousine thoải mái hơn\n"
+             . "🚌 **Xe khách**: Rẻ nhất, nhiều tuyến, limousine thoải mái hơn\n"
              . "🛵 **Xe máy**: Tự do khám phá, thuê 150-200k/ngày\n"
              . "🚕 **Grab**: Tiện lợi trong thành phố, giá cố định\n\n"
              . "💡 **Tip**: Đặt vé máy bay thứ 3-4 thường rẻ hơn 20-30%!";
@@ -437,6 +444,10 @@ class ChatbotController extends Controller
              . "Ví dụ: *\"Du lịch Đà Nẵng cần bao nhiêu tiền?\"*";
     }
 
+    // =========================================================
+    // HELPER
+    // =========================================================
+
     private function contains(string $text, array $keywords): bool
     {
         foreach ($keywords as $kw) {
@@ -448,7 +459,7 @@ class ChatbotController extends Controller
     }
 
     /**
-     * GET /chatbot/test — kiem tra chatbot (local only)
+     * GET /chatbot/test — kiểm tra chatbot (local only)
      */
     public function test()
     {
