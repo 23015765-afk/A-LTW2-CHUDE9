@@ -65,7 +65,7 @@ COPY . .
 # Copy frontend đã được build thành công từ stage 1 sang
 COPY --from=frontend /app/public/build ./public/build
 
-# 🔴 VỊ TRÍ ĐÃ SỬA: Tự động copy file cấu hình mẫu tạo thành file .env vật lý
+# VỊ TRÍ ĐÃ SỬA: Tự động copy file cấu hình mẫu tạo thành file .env vật lý
 RUN cp .env.example .env
 
 # Cài PHP dependencies (không bao gồm các package phục vụ môi trường dev)
