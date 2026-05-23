@@ -28,7 +28,7 @@ Route::post('/chatbot', [ChatbotController::class, 'chat'])->name('chatbot.chat'
 Route::get('/bai-viet', [PostController::class, 'index'])->name('posts.index');
 Route::get('/bai-viet/{post:slug}', [PostController::class, 'show'])->name('posts.show');
 
-// Auth Routes
+// Auth Routes // Chặn người dùng đã đăng nhập (Session hợp lệ) quay lại các trang vãng lai (Login/Register).
 Route::middleware('guest')->group(function () {
     Route::get('/dang-nhap', [AuthController::class, 'showLogin'])->name('login');
     Route::post('/dang-nhap', [AuthController::class, 'login']);
