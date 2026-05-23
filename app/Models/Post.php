@@ -87,7 +87,24 @@ class Post extends Model
     public function setTitleAttribute($value)
     {
         $this->attributes['title'] = $value;
-        $this->attributes['slug'] = Str::slug($value) . '-' . Str::random(5);
+        // Chỉ tạo slug mới khi tạo bài viết (chưa có slug), không ghi đè khi sửa
+        if (empty($this->attributes['slug'])) {
+            $baseSlug = Str::slug($value);
+            $slug = $baseSlug . '-' . Str::random(5);
+            $this->attributes['slug'] = $slug;
+        }
+    }
+
+    /**
+     * Sanitize nội dung HTML để tránh XSS — loại bỏ script tags nguy hiểm
+     */
+    public function setContentAttribute($value)
+    {
+        // Loại bỏ script, iframe, on* event handlers để tránh XSS
+        $value = preg_replace('/<script\b[^>]*>(.*?)<\/script>/is', '', $value);
+        $value = preg_replace('/<iframe\b[^>]*>(.*?)<\/iframe>/is', '', $value);
+        $value = preg_replace('/\bon\w+\s*=\s*["\'][^"\']*["\']/i', '', $value);
+        $this->attributes['content'] = $value;
     }
 
     public function isFavoritedBy(?User $user): bool
