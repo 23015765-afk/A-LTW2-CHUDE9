@@ -19,7 +19,16 @@ php artisan view:cache
 
 # Chạy database migrations
 echo ">> Running database migrations..."
-php artisan migrate --force && php artisan db:seed --force
+php artisan migrate --force
+
+# Chỉ seed nếu bảng users chưa có dữ liệu (tránh xóa data mỗi lần restart)
+USER_COUNT=$(php artisan tinker --execute="echo App\Models\User::count();" 2>/dev/null | tail -1 | tr -d '[:space:]')
+if [ "$USER_COUNT" = "0" ] || [ -z "$USER_COUNT" ]; then
+    echo ">> Seeding database (first run)..."
+    php artisan db:seed --force
+else
+    echo ">> Database already has data (users: $USER_COUNT), skipping seed."
+fi
 
 # Tạo storage symlink
 echo ">> Creating storage symlink..."
