@@ -2,7 +2,7 @@
 
 Website chia sẻ kinh nghiệm và cẩm nang du lịch Việt Nam, xây dựng bằng **Laravel 12**.
 
-🔗 **Demo trực tuyến:** [https://du-lich-viet.onrender.com](https://du-lich-viet.onrender.com) *(cập nhật sau khi deploy)*
+🔗 **Demo trực tuyến:** https://a-ltw2-chude9.onrender.com *(cập nhật sau khi deploy)*
 
 ---
 
